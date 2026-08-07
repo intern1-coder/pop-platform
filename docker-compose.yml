@@ -1,7 +1,4 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: pop-postgres
@@ -20,15 +17,14 @@ services:
       timeout: 5s
       retries: 5
 
-  # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: pop-backend
     environment:
-      DATABASE_URL: postgresql://pop_user:pop_password@postgres:5432/pop_db
-      JWT_SECRET: super_secret_key_12345
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pop_user:pop_password@postgres:5432/pop_db}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_key_12345}
     ports:
       - "3000:3000"
       - "5555:5555"
@@ -37,7 +33,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Frontend
   frontend:
     build:
       context: ./frontend
