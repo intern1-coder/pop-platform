@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: pop-backend
+    runtime: docker
+    repo: https://github.com/intern1-coder/pop-platform
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://pop_user:GfDmWs0KgmmEkDBhiMnGdMZP9bCm8e89@dpg-d9qvqgf10e5c73fq0he0-a.singapore-postgres.render.com/pop_db_yr8p
+      - key: JWT_SECRET
+        value: YOUR_STRONG_SECRET_HERE
+
+  - type: web
+    name: pop-frontend
+    runtime: docker
+    repo: https://github.com/intern1-coder/pop-platform
+    plan: free
+    region: singapore
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
