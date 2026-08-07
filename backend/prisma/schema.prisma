@@ -1,0 +1,329 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id         String   @id @default(cuid())
+  name       String
+  properties Property[]
+  people     Person[]
+  cases      Case[]
+  complaints Complaint[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Person {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  firstName    String
+  lastName     String
+  phone        String?
+  status       String   @default("Active")
+  lastLogin    DateTime?
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id])
+  
+  // Existing relations
+  tenancyUnits Unit[]   @relation("TenantUnit")
+  assignedTasks Task[]
+  reportedCases  Case[] @relation("ReportedCases")
+  assignedCases  Case[] @relation("AssignedCases")
+  timelineEvents TimelineEvent[]
+  sessions     Session[]
+  roles        UserRole[]
+  
+  // Complaint relations
+  assignedComplaints  Complaint[]             @relation("AssignedComplaints")
+  loggedIncidents     ComplaintIncident[]     @relation("LoggedIncidents")
+  uploadedEvidence    ComplaintEvidence[]     @relation("UploadedEvidence")
+  communications      ComplaintCommunication[] @relation("Communications")
+  generatedLetters    ComplaintLetter[]       @relation("GeneratedLetters")
+  actionOwner         ComplaintAction[]       @relation("ActionOwner")
+  createdActions      ComplaintAction[]       @relation("CreatedActions")
+  auditLogs           ComplaintAudit[]        @relation("AuditLogs")
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Property {
+  id          String   @id @default(cuid())
+  name        String
+  address     String
+  type        String   
+  status      String   @default("Active") 
+  orgId       String
+  organization Organization @relation(fields: [orgId], references: [id])
+  units       Unit[]
+  cases       Case[]
+  complaints  Complaint[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Unit {
+  id         String   @id @default(cuid())
+  name       String   
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+  tenantId   String?  
+  tenant     Person?  @relation("TenantUnit", fields: [tenantId], references: [id])
+  cases      Case[]
+}
+
+model Case {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        String   
+  status      String   @default("Open") 
+  priority    String   @default("Medium") 
+  orgId       String
+  organization Organization @relation(fields: [orgId], references: [id])
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id])
+  unitId      String?
+  unit        Unit?    @relation(fields: [unitId], references: [id])
+  reporterId  String?
+  reporter    Person?  @relation("ReportedCases", fields: [reporterId], references: [id])
+  assigneeId  String?
+  assignee    Person?  @relation("AssignedCases", fields: [assigneeId], references: [id])
+  tasks       Task[]
+  timeline    TimelineEvent[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("Pending") 
+  dueDate     DateTime?
+  caseId      String?
+  case        Case?    @relation(fields: [caseId], references: [id])
+  assigneeId  String?
+  assignee    Person?  @relation(fields: [assigneeId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TimelineEvent {
+  id          String   @id @default(cuid())
+  action      String   
+  details     String?
+  caseId      String?
+  case        Case?    @relation(fields: [caseId], references: [id])
+  // 👇 These TWO lines fix the error
+  complaintId String?
+  complaint   Complaint? @relation(fields: [complaintId], references: [id])
+  personId    String?
+  person      Person?  @relation(fields: [personId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  users       UserRole[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   Person @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+  @@id([userId, roleId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      Person   @relation(fields: [userId], references: [id])
+  refreshToken String @unique
+  expiresAt DateTime
+  device    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+// ==========================================
+// COMPLAINT MANAGEMENT ENGINE
+// ==========================================
+
+model Complaint {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  tenantName      String
+  tenantEmail     String?
+  tenantPhone     String?
+  propertyId      String
+  property        Property @relation(fields: [propertyId], references: [id])
+  category        String
+  severity        String
+  status          String   @default("Open")
+  description     String
+  addressLine1    String
+  addressLine2    String?
+  city            String
+  postcode        String
+  assignedToId    String?
+  assignedTo      Person?  @relation("AssignedComplaints", fields: [assignedToId], references: [id])
+  incidentDate    DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  closedAt        DateTime?
+  riskScore       Int      @default(0)
+  riskLevel       String   @default("Low")
+  monitoringRequired Boolean @default(false)
+  monitoringStatus    String?
+  housingCompanyId String?
+  tenancyRef       String?
+  orgId            String
+  organization     Organization @relation(fields: [orgId], references: [id])
+  incidents       ComplaintIncident[]
+  evidence        ComplaintEvidence[]
+  communications  ComplaintCommunication[]
+  letters         ComplaintLetter[]
+  witnesses       ComplaintWitness[]
+  actions         ComplaintAction[]
+  auditLogs       ComplaintAudit[]
+  timelineEvents  TimelineEvent[]
+  
+  @@index([status])
+  @@index([propertyId])
+  @@index([assignedToId])
+  @@index([orgId])
+  @@index([reference])
+}
+
+model ComplaintIncident {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  incidentDate    DateTime
+  category        String
+  severity        String
+  description     String
+  location        String?
+  latitude        Float?
+  longitude       Float?
+  gpsAccuracy     Float?
+  loggedById      String?
+  loggedBy        Person?  @relation("LoggedIncidents", fields: [loggedById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([complaintId])
+}
+
+model ComplaintEvidence {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  fileName        String
+  fileType        String
+  fileSize        Int
+  r2Key           String
+  description     String?
+  gpsLocation     String?
+  uploadedById    String?
+  uploadedBy      Person?  @relation("UploadedEvidence", fields: [uploadedById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([complaintId])
+}
+
+model ComplaintCommunication {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  type            String
+  direction       String
+  date            DateTime
+  summary         String
+  details         String?
+  userId          String?
+  user            Person?  @relation("Communications", fields: [userId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([complaintId])
+}
+
+model ComplaintLetter {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  letterType      String
+  content         String
+  pdfUrl          String?
+  letterhead      String
+  generatedById   String?
+  generatedBy     Person?  @relation("GeneratedLetters", fields: [generatedById], references: [id])
+  sentDate        DateTime?
+  sentMethod      String?
+  certificateOfPostingDate DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([complaintId])
+}
+
+model ComplaintWitness {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  name            String
+  contactDetails  String?
+  statement       String?
+  anonymous       Boolean  @default(false)
+  digitalAcknowledgement Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([complaintId])
+}
+
+model ComplaintAction {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  description     String
+  ownerId         String?
+  owner           Person?  @relation("ActionOwner", fields: [ownerId], references: [id])
+  dueDate         DateTime?
+  status          String   @default("Pending")
+  createdById     String?
+  createdBy       Person?  @relation("CreatedActions", fields: [createdById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+  
+  @@index([complaintId])
+}
+
+model ComplaintAudit {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  action          String
+  details         String?
+  userId          String?
+  user            Person?  @relation("AuditLogs", fields: [userId], references: [id])
+  createdAt       DateTime @default(now())
+  
+  @@index([complaintId])
+  @@index([userId])
+}
