@@ -128,6 +128,7 @@ export class ComplaintService {
         actions: true,
         auditLogs: true,
         timelineEvents: true,
+        monitoring: true,
       },
     });
 

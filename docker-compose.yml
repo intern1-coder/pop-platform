@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: pop_password
       POSTGRES_DB: pop_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -38,6 +38,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: pop-frontend
+    environment:
+      BACKEND_URL: ${BACKEND_URL:-http://backend:3000}
     ports:
       - "8080:80"
     depends_on:

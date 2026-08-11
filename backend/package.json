@@ -7,7 +7,8 @@
     "start:prod": "node dist/main.js",
     "build": "nest build",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -21,6 +22,7 @@
     "bcryptjs": "^2.4.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "^0.13.0",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
@@ -28,6 +30,7 @@
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^4.0.1",
     "@types/bcryptjs": "^2.4.6",
+    "@types/pdfkit": "^0.13.1",
     "prisma": "^5.7.0",
     "typescript": "^5.0.0"
   }

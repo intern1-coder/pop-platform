@@ -19,6 +19,9 @@ build/
 prisma/*.db
 prisma/dev.db
 
+# Runtime uploads (evidence, generated letters)
+uploads/
+
 # Logs
 logs/
 *.log

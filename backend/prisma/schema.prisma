@@ -48,6 +48,8 @@ model Person {
   actionOwner         ComplaintAction[]       @relation("ActionOwner")
   createdActions      ComplaintAction[]       @relation("CreatedActions")
   auditLogs           ComplaintAudit[]        @relation("AuditLogs")
+  monitoringRequests  ComplaintMonitoring[]   @relation("MonitoringRequests")
+  monitoringApprovals ComplaintMonitoring[]   @relation("MonitoringApprovals")
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -198,6 +200,7 @@ model Complaint {
   witnesses       ComplaintWitness[]
   actions         ComplaintAction[]
   auditLogs       ComplaintAudit[]
+  monitoring      ComplaintMonitoring[]
   timelineEvents  TimelineEvent[]
   
   @@index([status])
@@ -326,4 +329,23 @@ model ComplaintAudit {
   
   @@index([complaintId])
   @@index([userId])
+}
+
+model ComplaintMonitoring {
+  id              String   @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  status          String   @default("Requested")
+  justification   String?
+  requestedById   String?
+  requestedBy     Person?  @relation("MonitoringRequests", fields: [requestedById], references: [id])
+  approvedById    String?
+  approvedBy      Person?  @relation("MonitoringApprovals", fields: [approvedById], references: [id])
+  expiresAt       DateTime?
+  endReason       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([complaintId])
+  @@index([status])
 }
