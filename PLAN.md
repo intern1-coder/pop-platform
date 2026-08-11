@@ -186,6 +186,35 @@ model ComplaintMonitoring {
 
 ---
 
+## 5b. Phase 8 — ASB Full Parity (reference: Omnia ASB App)
+
+> Reference implementation: `ASB_APP-main.zip` (Cloudflare Worker + D1 + PWA). We replicate **functionality & the problems it solves only** — NOT the UI (a better UI will be built separately).
+
+### Gaps in POP vs ASB app (all to close)
+1. **ASB letter templates** — `first_warning`, `final_warning`, `notice_seeking_possession` (Housing Act 1988 §8). Ground-driven notice periods: Ground 12 → 14 days, Ground 14 → immediate. Generic ("To The Occupiers", post-only) vs named per-tenant modes. NSP must name tenants + requires a §8 ground. PDF via pdfkit.
+2. **Mark letter sent** — method (post / email / hand_delivered) + Certificate of Posting (PC2) date for post. Email blocked when no tenant email on file.
+3. **Risk scoring** — risk factors with weights (`vulnerable_tenant`=2, `threats_violence`=5, `repeat_offender`=2, `police_involved`=2, `hate_crime`=3, `child_safeguarding`=3); score = Σ weights; level = 0-2 low / 3-4 medium / 5-7 high / 8+ critical. Audited as `risk_assessed`.
+4. **Court pack checklist + export** — incident thresholds (critical 1 / high 1 / medium 2 / low 3), first warning, final warning **sent**, NSP, evidence, police ref (required for serious clause codes `3.6.7-3.6.10` + risk factors), witness, notice served date → `courtReady`. `GET /api/complaints/:id/export`.
+5. **SLA visit windows + escalation cron** — critical 0 / high 3 / medium 5 / low 7 **working days**; if nothing logged (no incident/evidence) by window close → PM+BM reminder; Critical → Ops next calendar day, High → next working day, Medium/Low dashboard-only. Every step audited. Daily `@Cron`.
+6. **Monitoring hardening** — request needs justification **and** a warning letter actually **sent**; approve → `expiresAt` = +30 days; reject records endReason; states `Requested/Approved/Rejected/Expired/Broken`. New incident **breaks** active monitoring. Cron auto-expires at 30 days.
+7. **External agencies** — `ComplaintExternal` (bodyType: Police/Council/HA/Social Services/Other, CAD no., CRN, officer, force, date reported, status, notes).
+8. **Property-level cases & multiple tenants** — `ComplaintTenant[]` (isPrimary), `propertyLevel` flag; letters generated generic or per-tenant.
+9. **Notice fields** — `noticeGround`, `noticeServedDate`, `noticeExpiresDate`, `rentArrearsAmount`, `closedReason`, `outcome`, `branch`, `assignedPmEmail`, landlord name/address (resolved via `HousingCompany` alias table).
+10. **Critical-case alert** — on creating a Critical case: audit entry + best-effort email to BM/Ops (MailService no-ops if no transport configured).
+
+### Backend layout
+- `src/modules/asb/` — risk weights, court checklist, letter templates (pure libs).
+- Letter service reworked for ASB modes + mark-sent variants.
+- New modules: `external`. New model relations on complaint.
+- `SlaService` (`@nestjs/schedule`, `@Cron('0 2 * * *')`).
+- Incident service breaks monitoring on create.
+
+### Frontend (functional integration only — UI will be redesigned separately)
+- Complaint detail: risk-factor editor, court pack checklist + export button, external refs, ASB letter types + generic/named + mark-sent with method & PC2, notice fields, SLA/visit status.
+- New complaint: risk factors, multiple tenants, property-level toggle.
+
+---
+
 ## 6. Database Migration Strategy
 - **DECISION (2026-08-11):** unify on **PostgreSQL**. Local `.env` points at docker Postgres via host port **5433** (native Windows Postgres shadows 5432). Inside docker the backend uses `postgres:5432`. Schema changes applied with `prisma db push` (no migration-history sync needed for MVP).
 - **Caution:** `docker-compose.yml` interpolates `${DATABASE_URL}` — ensure the shell env is cleared (`Remove-Item Env:DATABASE_URL`) or compose will inject a stray value into the container.

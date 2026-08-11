@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
+const RISK_FACTORS = [
+  { key: 'vulnerable_tenant', label: 'Vulnerable tenant' },
+  { key: 'threats_violence', label: 'Threats / violence' },
+  { key: 'repeat_offender', label: 'Repeat offender' },
+  { key: 'police_involved', label: 'Police involved' },
+  { key: 'hate_crime', label: 'Hate crime' },
+  { key: 'child_safeguarding', label: 'Child safeguarding' },
+];
+
 export default function Cases() {
   const [cases, setCases] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [riskOpen, setRiskOpen] = useState(false);
   const [newCase, setNewCase] = useState({
     title: '',
     propertyId: '',
@@ -13,7 +23,15 @@ export default function Cases() {
     location: '',
     witnesses: '',
     incidentDetails: '',
-    reporterName: ''
+    reporterName: '',
+    tenantEmail: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    postcode: '',
+    branch: '',
+    landlordName: '',
+    riskFactors: [] as string[],
   });
 
   const fetchData = async () => {
@@ -43,16 +61,20 @@ export default function Cases() {
     // ✅ CHANGED: Map frontend fields to complaint API fields
     const complaintData = {
       tenantName: newCase.reporterName || 'Anonymous',
-      tenantEmail: '',
+      tenantEmail: newCase.tenantEmail || '',
       tenantPhone: '',
       propertyId: newCase.propertyId,
       category: newCase.title,
       severity: newCase.urgency,
       description: newCase.incidentDetails,
-      addressLine1: '',
-      city: '',
-      postcode: '',
+      addressLine1: newCase.addressLine1 || (properties.find((p) => p.id === newCase.propertyId)?.address || newCase.location),
+      addressLine2: newCase.addressLine2 || '',
+      city: newCase.city || '',
+      postcode: newCase.postcode || '',
       incidentDate: newCase.incidentDate || new Date().toISOString().split('T')[0],
+      branch: newCase.branch || null,
+      landlordName: newCase.landlordName || null,
+      riskFactors: newCase.riskFactors.length ? newCase.riskFactors.join(',') : null,
     };
 
     try {
@@ -67,7 +89,15 @@ export default function Cases() {
         location: '',
         witnesses: '',
         incidentDetails: '',
-        reporterName: ''
+        reporterName: '',
+        tenantEmail: '',
+        addressLine1: '',
+        addressLine2: '',
+        city: '',
+        postcode: '',
+        branch: '',
+        landlordName: '',
+        riskFactors: [],
       });
       fetchData();
     } catch (e) {
@@ -193,12 +223,89 @@ export default function Cases() {
                 value={newCase.witnesses}
                 onChange={e => setNewCase({ ...newCase, witnesses: e.target.value })}
               />
-              <input
-                className="w-full border p-2 rounded"
-                placeholder="Reporter Name"
-                value={newCase.reporterName}
-                onChange={e => setNewCase({ ...newCase, reporterName: e.target.value })}
-              />
+               <input
+                 className="w-full border p-2 rounded"
+                 placeholder="Reporter Name"
+                 value={newCase.reporterName}
+                 onChange={e => setNewCase({ ...newCase, reporterName: e.target.value })}
+               />
+               <input
+                 className="w-full border p-2 rounded"
+                 placeholder="Tenant email"
+                 value={newCase.tenantEmail}
+                 onChange={e => setNewCase({ ...newCase, tenantEmail: e.target.value })}
+               />
+               <input
+                 className="w-full border p-2 rounded"
+                 placeholder="Address line 1"
+                 value={newCase.addressLine1}
+                 onChange={e => setNewCase({ ...newCase, addressLine1: e.target.value })}
+               />
+               <input
+                 className="w-full border p-2 rounded"
+                 placeholder="Address line 2"
+                 value={newCase.addressLine2}
+                 onChange={e => setNewCase({ ...newCase, addressLine2: e.target.value })}
+               />
+               <div className="grid grid-cols-2 gap-2">
+                 <input
+                   className="w-full border p-2 rounded"
+                   placeholder="City"
+                   value={newCase.city}
+                   onChange={e => setNewCase({ ...newCase, city: e.target.value })}
+                 />
+                 <input
+                   className="w-full border p-2 rounded"
+                   placeholder="Postcode"
+                   value={newCase.postcode}
+                   onChange={e => setNewCase({ ...newCase, postcode: e.target.value })}
+                 />
+               </div>
+               <input
+                 className="w-full border p-2 rounded"
+                 placeholder="Branch (optional)"
+                 value={newCase.branch}
+                 onChange={e => setNewCase({ ...newCase, branch: e.target.value })}
+               />
+               <input
+                 className="w-full border p-2 rounded"
+                 placeholder="Landlord / company alias (optional)"
+                 value={newCase.landlordName}
+                 onChange={e => setNewCase({ ...newCase, landlordName: e.target.value })}
+               />
+               <div>
+                 <button
+                   type="button"
+                   onClick={() => setRiskOpen(!riskOpen)}
+                   className="text-sm text-blue-700 hover:underline"
+                 >
+                   Risk factors {riskOpen ? '−' : '+'} ({newCase.riskFactors.length} selected)
+                 </button>
+                 {riskOpen && (
+                   <div className="mt-2 flex flex-wrap gap-2">
+                     {RISK_FACTORS.map(f => {
+                       const on = newCase.riskFactors.includes(f.key);
+                       return (
+                         <button
+                           key={f.key}
+                           type="button"
+                           onClick={() =>
+                             setNewCase({
+                               ...newCase,
+                               riskFactors: on
+                                 ? newCase.riskFactors.filter(k => k !== f.key)
+                                 : [...newCase.riskFactors, f.key],
+                             })
+                           }
+                           className={`px-2 py-1 rounded text-xs border ${on ? 'bg-blue-100 border-blue-600 text-blue-800' : 'bg-gray-50 text-gray-600'}`}
+                         >
+                           {f.label}
+                         </button>
+                       );
+                     })}
+                   </div>
+                 )}
+               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button

@@ -1,12 +1,14 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TimelineService } from '../timeline/timeline.service';
+import { MonitoringService } from '../monitoring/monitoring.service';
 
 @Injectable()
 export class IncidentService {
   constructor(
     private prisma: PrismaService,
     private timeline: TimelineService,
+    private monitoring: MonitoringService,
   ) {}
 
   async create(complaintId: string, data: any, userId: string) {
@@ -29,6 +31,10 @@ export class IncidentService {
         loggedById: userId,
       },
     });
+
+    // Any new incident breaks active Monitoring — a case being parked on the
+    // basis of compliant behaviour can no longer be assumed compliant.
+    await this.monitoring.breakActive(complaintId, 'New incident logged — Monitoring broken');
 
     await this.timeline.create({
       complaintId,

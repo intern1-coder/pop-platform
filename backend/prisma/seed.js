@@ -26,13 +26,19 @@ const DEMO_PROPERTIES = [
   },
 ];
 
+const DEMO_COMPANIES = [
+  { alias: 'omnia', fullName: 'Omnia Housing Group', address: 'Omnia House, 1 Market Street, Manchester M3 4BR' },
+  { alias: 'apollo', fullName: 'Apollo Housing', address: 'Apollo House, 7 Riverside, Leeds LS1 4XY' },
+  { alias: 'redstone', fullName: 'Redstone Homes', address: 'Redstone Court, 99 High Road, Birmingham B1 4AB' },
+];
+
 const DEMO_COMPLAINTS = [
   {
     reference: 'CMP-2025-0001',
     tenantName: 'Pop Tenant',
     tenantEmail: 'tenant@pop.test',
     tenantPhone: '01234567890',
-    category: 'Damp & Mould',
+    category: 'Anti-Social Behaviour',
     severity: 'High',
     status: 'In Progress',
     description:
@@ -44,9 +50,16 @@ const DEMO_COMPLAINTS = [
     incidentDate: new Date('2025-11-18'),
     riskScore: 8,
     riskLevel: 'High',
+    riskFactors: 'threats_violence,repeat_offender',
     monitoringRequired: true,
     monitoringStatus: 'Approved',
     tenancyRef: 'RC-F2-2023',
+    branch: 'Manchester North',
+    landlordName: 'omnia',
+    tenants: [
+      { tenantName: 'Pop Tenant', tenantEmail: 'tenant@pop.test', tenancyRef: 'RC-F2-2023', isPrimary: true },
+      { tenantName: 'J. Tenant', tenantEmail: 'jtenant@example.com', tenancyRef: 'RC-F2-2023', isPrimary: false },
+    ],
     incident: {
       category: 'Damp & Mould',
       severity: 'High',
@@ -61,7 +74,23 @@ const DEMO_COMPLAINTS = [
       { type: 'Email', direction: 'Inbound', summary: 'Tenant first reported damp issue', details: 'Tenant emailed photos of mould and requested urgent repair.' },
       { type: 'Phone Call', direction: 'Outbound', summary: 'Surveyor inspection scheduled', details: 'Agreed with tenant to carry out damp survey on Friday.' },
     ],
-    letter: { letterType: 'Notice of Inspection', content: 'We are writing to arrange access for a damp and mould survey of your property.' },
+    letter: {
+      letterType: 'first_warning',
+      content: 'We are writing to you as a formal first warning regarding reports of anti-social behaviour (ASB) at or near the above property.',
+      sentDate: new Date('2025-11-20'),
+      sentMethod: 'Post',
+      certificateOfPostingDate: new Date('2025-11-20'),
+      tenantName: 'Pop Tenant',
+    },
+    external: {
+      bodyType: 'Police',
+      cadNumber: 'CAD-00123',
+      referenceNumber: 'CRN-9F8E7D6C5B',
+      officerName: 'PC Smith',
+      forceName: 'Greater Manchester Police',
+      dateReported: new Date('2025-11-18'),
+      notes: 'Attended property, reported disturbance.',
+    },
     witnesses: [{ name: 'Nadia Park', contactDetails: 'nadia.park@example.com', statement: 'Confirmed seeing damp patches on shared hallway wall.' }],
     actions: [
       { description: 'Arrange damp survey with contractor', status: 'In Progress' },
@@ -130,13 +159,22 @@ const DEMO_COMPLAINTS = [
     incidentDate: new Date('2026-01-10'),
     riskScore: 10,
     riskLevel: 'Critical',
+    riskFactors: 'threats_violence,vulnerable_tenant',
     monitoringRequired: true,
     monitoringStatus: 'Approved',
     tenancyRef: 'MV-UB-2024',
+    branch: 'Meadow Valley',
+    landlordName: 'redstone',
+    noticeGround: '14',
+    noticeServedDate: new Date('2026-01-12'),
+    noticeExpiresDate: new Date('2026-01-12'),
+    rentArrearsAmount: 850.0,
+    closedReason: null,
+    outcome: null,
     incident: {
       category: 'Heating & Hot Water',
       severity: 'Critical',
-      description: 'Boiler not working, no heating or hot water for 4 days.',
+      description: 'Boiler not working, no heating or hot water for 4 days. Elderly resident.',
       location: 'Unit B, Meadow View Flats',
     },
     evidence: [
@@ -144,10 +182,26 @@ const DEMO_COMPLAINTS = [
       { fileName: 'engineer-report.pdf', fileType: 'application/pdf', fileSize: 9800, description: 'Emergency engineer report confirming boiler failure.' },
     ],
     communications: [
-      { type: 'Phone Call', direction: 'Inbound', summary: 'Emergency heating call', details: 'Tenant reported complete loss of heating and hot water.' },
-      { type: 'Email', direction: 'Outbound', summary: 'Boiler replacement authorised', details: 'Authorised emergency boiler replacement, 48hr turnaround.' },
+      { type: 'Phone Call', direction: 'Inbound', date: new Date('2026-01-10'), summary: 'Emergency heating call', details: 'Tenant reported complete loss of heating and hot water.' },
+      { type: 'Email', direction: 'Outbound', date: new Date('2026-01-10'), summary: 'Boiler replacement authorised', details: 'Authorised emergency boiler replacement, 48hr turnaround.' },
     ],
-    letter: { letterType: 'Notice of Works', content: 'Emergency boiler replacement works will commence at your property.' },
+    letter: {
+      letterType: 'notice_seeking_possession',
+      content: 'NOTICE SEEKING POSSESSION — Housing Act 1988 Section 8. Ground 14.',
+      sentDate: new Date('2026-01-12'),
+      sentMethod: 'Post',
+      certificateOfPostingDate: new Date('2026-01-12'),
+      letterhead: 'POP',
+      tenantName: 'Pop Tenant',
+    },
+    external: {
+      bodyType: 'Social Services',
+      cadNumber: 'SS-2026-0012',
+      officerName: 'Sally Jones',
+      forceName: 'Manchester City Council Social Services',
+      dateReported: new Date('2026-01-10'),
+      notes: 'Welfare check requested for elderly resident.',
+    },
     witnesses: [{ name: 'Sam Okafor', contactDetails: 'sam.okafor@example.com', statement: 'Engineer confirmed boiler beyond economical repair.' }],
     actions: [
       { description: 'Replace boiler (emergency works)', status: 'In Progress' },
@@ -157,6 +211,7 @@ const DEMO_COMPLAINTS = [
     timeline: [
       { action: 'Complaint registered', details: 'Reference CMP-2025-0003 created.' },
       { action: 'Emergency works authorised', details: 'Boiler replacement approved.' },
+      { action: 'Notice Seeking Possession served', details: 'Section 8 Ground 14 notice served by post (PC2 01-12-2026).' },
     ],
   },
   {
@@ -279,6 +334,16 @@ async function seedUsers(org) {
   }
 }
 
+async function seedCompanies() {
+  for (const c of DEMO_COMPANIES) {
+    const existing = await prisma.housingCompany.findUnique({ where: { alias: c.alias } });
+    if (!existing) {
+      await prisma.housingCompany.create({ data: { alias: c.alias, fullName: c.fullName, address: c.address } });
+      console.log(`Created housing company: ${c.fullName} (alias ${c.alias})`);
+    }
+  }
+}
+
 async function seedDemoData(org) {
   const admin = await prisma.person.findUnique({ where: { email: 'admin@pop.test' } });
   const manager = await prisma.person.findUnique({ where: { email: 'manager@pop.test' } });
@@ -345,8 +410,31 @@ async function seedDemoData(org) {
         riskLevel: demo.riskLevel,
         monitoringRequired: demo.monitoringRequired,
         monitoringStatus: demo.monitoringStatus,
-        tenancyRef: demo.tenancyRef,
+         tenancyRef: demo.tenancyRef,
+         branch: demo.branch || null,
+         assignedPmEmail: demo.assignedPmEmail || null,
+         propertyLevel: !!demo.propertyLevel,
+         landlordName: demo.landlordName || null,
+        riskFactors: demo.riskFactors || null,
+        closedReason: demo.closedReason || null,
+        outcome: demo.outcome || null,
+        noticeGround: demo.noticeGround || null,
+        noticeServedDate: demo.noticeServedDate ? new Date(demo.noticeServedDate) : null,
+        noticeExpiresDate: demo.noticeExpiresDate ? new Date(demo.noticeExpiresDate) : null,
+        rentArrearsAmount: demo.rentArrearsAmount ?? null,
         orgId: org.id,
+         tenants: {
+           create: (Array.isArray(demo.tenants) && demo.tenants.length
+             ? demo.tenants
+             : [{ tenantName: demo.tenantName, tenantEmail: demo.tenantEmail, tenancyRef: demo.tenancyRef || null, isPrimary: true }])
+             .map((t) => ({
+               tenantName: t.tenantName,
+               tenantEmail: t.tenantEmail || null,
+               tenantPhone: t.tenantPhone || null,
+               tenancyRef: t.tenancyRef || null,
+               isPrimary: t.isPrimary,
+             })),
+         },
         incidents: {
           create: [{ ...demo.incident, incidentDate: demo.incidentDate, loggedById: demo.status === 'Closed' ? admin.id : manager.id }],
         },
@@ -366,13 +454,33 @@ async function seedDemoData(org) {
                 {
                   letterType: demo.letter.letterType,
                   content: demo.letter.content,
-                  letterhead: 'POP',
+                  letterhead: demo.letter.letterhead || 'POP',
                   generatedById: admin.id,
-                  sentDate: demo.status === 'Closed' ? demo.closedAt : null,
+                  isGeneric: demo.letter.isGeneric || false,
+                  tenantName: demo.letter.tenantName || null,
+                  sentDate: demo.letter.sentDate ? new Date(demo.letter.sentDate) : (demo.status === 'Closed' ? demo.closedAt : null),
+                  sentMethod: demo.letter.sentMethod || null,
+                  certificateOfPostingDate: demo.letter.certificateOfPostingDate ? new Date(demo.letter.certificateOfPostingDate) : null,
                 },
               ]
             : [],
         },
+        ...(demo.external
+          ? {
+              external: {
+                create: {
+                  bodyType: demo.external.bodyType,
+                  cadNumber: demo.external.cadNumber || null,
+                  referenceNumber: demo.external.referenceNumber || null,
+                  officerName: demo.external.officerName || null,
+                  forceName: demo.external.forceName || null,
+                  dateReported: demo.external.dateReported ? new Date(demo.external.dateReported) : null,
+                  notes: demo.external.notes || null,
+                  loggedById: admin.id,
+                },
+              },
+            }
+          : {}),
         witnesses: {
           create: demo.witnesses.map((w) => ({
             name: w.name,
@@ -439,6 +547,7 @@ async function main() {
   }
 
   await seedUsers(org);
+  await seedCompanies();
   await seedDemoData(org);
 
   console.log('\n=== DUMMY LOGINS ===');

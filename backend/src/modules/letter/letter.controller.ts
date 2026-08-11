@@ -23,13 +23,20 @@ export class LetterController {
   constructor(private readonly letterService: LetterService) {}
 
   @Post()
-  async generate(@Param('complaintId') complaintId: string, @Body('letterType') letterType: string, @Request() req) {
+  async generate(
+    @Param('complaintId') complaintId: string,
+    @Body('letterType') letterType: string,
+    @Body('mode') mode: 'generic' | 'named',
+    @Body('tenantIds') tenantIds: string[],
+    @Request() req,
+  ) {
     if (!letterType) throw new NotFoundException('LetterType is required');
-    return this.letterService.generate(complaintId, letterType, req.user.id);
+    const safeMode: 'generic' | 'named' | undefined = mode === 'generic' ? 'generic' : undefined;
+    return this.letterService.generate(complaintId, letterType, req.user.id, { mode: safeMode, tenantIds });
   }
 
   @Get()
-  async findAll(@Param('complaintId') complaintId: string, @Request() req) {
+  async findAll(@Param('complaintId') complaintId: string) {
     return this.letterService.findAll(complaintId);
   }
 
@@ -40,7 +47,16 @@ export class LetterController {
   }
 
   @Put(':letterId/sent')
-  async markSent(@Param('complaintId') complaintId: string, @Param('letterId') letterId: string, @Request() req) {
-    return this.letterService.markSent(complaintId, letterId, req.user.id);
+  async markSent(
+    @Param('complaintId') complaintId: string,
+    @Param('letterId') letterId: string,
+    @Body('sentMethod') sentMethod: string,
+    @Body('certificateOfPostingDate') certificateOfPostingDate: string,
+    @Request() req,
+  ) {
+    return this.letterService.markSent(complaintId, letterId, req.user.id, {
+      sentMethod,
+      certificateOfPostingDate,
+    });
   }
 }

@@ -38,4 +38,16 @@ export class ComplaintController {
   updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req) {
     return this.complaintService.updateStatus(id, status, req.user.id);
   }
+
+  @Get(':id/sla')
+  @Roles('Admin', 'PropertyManager', 'Tenant')
+  getSla(@Param('id') id: string, @Request() req) {
+    return this.complaintService.getSla(id, req.user);
+  }
+
+  @Get(':id/export')
+  @Roles('Admin', 'PropertyManager', 'Tenant')
+  exportCase(@Param('id') id: string, @Request() req) {
+    return this.complaintService.exportCase(id, req.user);
+  }
 }

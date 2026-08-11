@@ -50,6 +50,7 @@ model Person {
   auditLogs           ComplaintAudit[]        @relation("AuditLogs")
   monitoringRequests  ComplaintMonitoring[]   @relation("MonitoringRequests")
   monitoringApprovals ComplaintMonitoring[]   @relation("MonitoringApprovals")
+  externalLogs        ComplaintExternal[]     @relation("ExternalLogs")
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -185,12 +186,24 @@ model Complaint {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   closedAt        DateTime?
+  closedReason    String?
+  outcome         String?
   riskScore       Int      @default(0)
   riskLevel       String   @default("Low")
+  riskFactors     String?
   monitoringRequired Boolean @default(false)
   monitoringStatus    String?
   housingCompanyId String?
+  landlordName    String?
+  landlordAddress String?
   tenancyRef       String?
+  branch           String?
+  assignedPmEmail  String?
+  propertyLevel    Boolean  @default(false)
+  noticeGround     String?
+  noticeServedDate DateTime?
+  noticeExpiresDate DateTime?
+  rentArrearsAmount Float?
   orgId            String
   organization     Organization @relation(fields: [orgId], references: [id])
   incidents       ComplaintIncident[]
@@ -201,6 +214,8 @@ model Complaint {
   actions         ComplaintAction[]
   auditLogs       ComplaintAudit[]
   monitoring      ComplaintMonitoring[]
+  tenants         ComplaintTenant[]
+  external        ComplaintExternal[]
   timelineEvents  TimelineEvent[]
   
   @@index([status])
@@ -273,6 +288,8 @@ model ComplaintLetter {
   content         String
   pdfUrl          String?
   letterhead      String
+  isGeneric       Boolean  @default(false)
+  tenantName      String?
   generatedById   String?
   generatedBy     Person?  @relation("GeneratedLetters", fields: [generatedById], references: [id])
   sentDate        DateTime?
@@ -348,4 +365,55 @@ model ComplaintMonitoring {
   
   @@index([complaintId])
   @@index([status])
+}
+
+// Every tenant named on a complaint. The primary tenant is denormalised onto
+// Complaint.tenantName; this table lets a property-level case name every
+// affected tenant so letters can be addressed individually when needed.
+model ComplaintTenant {
+  id          String    @id @default(cuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id])
+  tenantName  String
+  tenantEmail String?
+  tenantPhone String?
+  tenancyRef  String?
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([complaintId])
+}
+
+// Police / Local Council / other external body references against a case
+// (CAD no., crime reference no., officer/force, date reported).
+model ComplaintExternal {
+  id              String    @id @default(cuid())
+  complaintId     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id])
+  bodyType        String
+  cadNumber       String?
+  referenceNumber String?
+  officerName     String?
+  forceName       String?
+  dateReported    DateTime?
+  status          String?
+  notes           String?
+  loggedById      String?
+  loggedBy        Person?   @relation("ExternalLogs", fields: [loggedById], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([complaintId])
+}
+
+// Known landlord companies: resolved by alias at complaint creation so letters
+// carry the correct legal name + registered address in their footer.
+model HousingCompany {
+  id        String   @id @default(cuid())
+  alias     String   @unique
+  fullName  String
+  address   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

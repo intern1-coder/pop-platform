@@ -14,6 +14,10 @@ import { ActionModule } from './modules/action/action.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { EscalationModule } from './modules/escalation/escalation.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ExternalModule } from './modules/external/external.module';
+import { NotifyModule } from './modules/notify/notify.module';
+import { SlaModule } from './modules/sla/sla.module';
+import { MetaModule } from './modules/meta/meta.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -34,6 +38,10 @@ import { PrismaModule } from './prisma/prisma.module';
     MonitoringModule,
     EscalationModule,
     DashboardModule,
+    ExternalModule,
+    NotifyModule,
+    SlaModule,
+    MetaModule,
   ],
 })
 export class AppModule {}

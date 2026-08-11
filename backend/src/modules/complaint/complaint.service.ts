@@ -1,15 +1,20 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TimelineService } from '../timeline/timeline.service';
+import { NotifyService } from '../notify/notify.service';
+import { computeRiskScore, riskLevelFromScore } from '../../asb/risk';
+import { buildCourtChecklist, requiresPoliceReference } from '../../asb/court-checklist';
+import { visitSlaInfo } from '../../asb/dates';
 
 @Injectable()
 export class ComplaintService {
   constructor(
     private prisma: PrismaService,
     private timeline: TimelineService,
+    private notify: NotifyService,
   ) {}
 
-  // Generate complaint reference: ASB-2024-001
+  // Generate complaint reference: ASB-2026-001
   private async generateReference(): Promise<string> {
     const year = new Date().getFullYear();
     const count = await this.prisma.complaint.count();
@@ -17,21 +22,31 @@ export class ComplaintService {
     return `ASB-${year}-${seq}`;
   }
 
-  // Calculate risk level from score
-  private getRiskLevel(score: number): string {
-    if (score <= 2) return 'Low';
-    if (score <= 4) return 'Medium';
-    if (score <= 7) return 'High';
-    return 'Critical';
+  // Resolve a landlord alias to the registered company (name + address) used in
+  // letter footers. Returns null when no alias matches (caller flags it).
+  private async resolveLandlord(alias?: string | null) {
+    if (!alias) return { landlordName: null, landlordAddress: null, unmapped: false };
+    const company = await this.prisma.housingCompany.findFirst({
+      where: { alias: { equals: alias.trim(), mode: 'insensitive' } },
+    });
+    if (company) {
+      return {
+        landlordName: company.fullName,
+        landlordAddress: company.address,
+        unmapped: false,
+      };
+    }
+    return { landlordName: alias, landlordAddress: null, unmapped: true };
   }
 
   async create(data: any, userId: string, orgId: string) {
     const reference = await this.generateReference();
-    
-    // Calculate risk score (simplified - can be more complex)
-    const severityMap: Record<string, number> = { Low: 1, Medium: 3, High: 6, Critical: 9 };
-    const riskScore = severityMap[data.severity] || 1;
-    const riskLevel = this.getRiskLevel(riskScore);
+
+    const riskFactors = data.riskFactors || null;
+    const riskScore = computeRiskScore(riskFactors);
+    const riskLevel = riskLevelFromScore(riskScore);
+
+    const landlord = await this.resolveLandlord(data.landlordName);
 
     const complaint = await this.prisma.complaint.create({
       data: {
@@ -51,32 +66,103 @@ export class ComplaintService {
         incidentDate: new Date(data.incidentDate),
         riskScore,
         riskLevel,
+        riskFactors,
         assignedToId: data.assignedToId || null,
+        assignedPmEmail: data.assignedPmEmail || null,
+        branch: data.branch || null,
+        propertyLevel: !!data.propertyLevel,
+        noticeGround: data.noticeGround || null,
+        noticeServedDate: data.noticeServedDate ? new Date(data.noticeServedDate) : null,
+        noticeExpiresDate: data.noticeExpiresDate ? new Date(data.noticeExpiresDate) : null,
+        rentArrearsAmount: data.rentArrearsAmount ?? null,
+        landlordName: landlord.landlordName,
+        landlordAddress: landlord.landlordAddress,
+        housingCompanyId: data.housingCompanyId || null,
+        tenancyRef: data.tenancyRef || null,
         orgId,
+        tenants: {
+          create:
+            Array.isArray(data.tenants) && data.tenants.length
+              ? data.tenants.map((t: any, i: number) => ({
+                  tenantName: t.tenantName || t.name,
+                  tenantEmail: t.tenantEmail || null,
+                  tenantPhone: t.tenantPhone || null,
+                  tenancyRef: t.tenancyRef || null,
+                  isPrimary: i === 0,
+                }))
+              : [
+                  {
+                    tenantName: data.tenantName,
+                    tenantEmail: data.tenantEmail || null,
+                    tenantPhone: data.tenantPhone || null,
+                    tenancyRef: data.tenancyRef || null,
+                    isPrimary: true,
+                  },
+                ],
+        },
       },
     });
 
-    
-    // Create timeline entry
-    
     await this.timeline.create({
       complaintId: complaint.id,
       personId: userId,
       action: 'Case Created',
-      details: `Complaint ${reference} created - ${data.category}`,
+      details: `Complaint ${reference} created - ${data.category}${data.propertyLevel ? ' (whole property)' : ''}`,
     });
 
-    // Create audit log
     await this.prisma.complaintAudit.create({
       data: {
         complaintId: complaint.id,
-        action: 'Created',
+        action: 'complaint_created',
         details: `Complaint ${reference} created by ${userId}`,
         userId,
       },
     });
 
-    
+    if (riskFactors) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: complaint.id,
+          action: 'risk_assessed',
+          details: `Risk assessment saved — score ${riskScore} (${riskLevel})`,
+          userId,
+        },
+      });
+    }
+
+    if (landlord.unmapped) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: complaint.id,
+          action: 'landlord_unmapped',
+          details: `Landlord "${data.landlordName}" doesn't match any known company — letters will use the generic fallback name/address until this is mapped in housing_companies.`,
+          userId,
+        },
+      });
+    }
+
+    // Critical cases alert the management chain immediately.
+    if ((data.severity || '').toLowerCase() === 'critical') {
+      const opsEmails = (process.env.OPS_ALERT_EMAILS || '')
+        .split(',')
+        .map((e) => e.trim())
+        .filter(Boolean);
+      for (const to of opsEmails) {
+        await this.notify.sendEmail({
+          to,
+          subject: `[CRITICAL CASE] Complaint ${reference} — IMMEDIATE ACTION REQUIRED`,
+          bodyText: `Critical complaint logged.\n\nCase: ${reference}\nTenant: ${data.tenantName}\nCategory: ${data.category}\nLogged by: ${userId}`,
+        });
+      }
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: complaint.id,
+          action: 'critical_case_alert',
+          details: `Immediate critical alert sent to BM and Ops on case creation`,
+          userId: 'system',
+        },
+      });
+    }
 
     return complaint;
   }
@@ -86,7 +172,7 @@ export class ComplaintService {
     const isStaff = roles.some((r: string) => ['Admin', 'PropertyManager'].includes(r));
 
     const where: any = {};
-    
+
     if (!isStaff) {
       // Tenants only see their own complaints
       where.tenantEmail = user.email;
@@ -94,7 +180,6 @@ export class ComplaintService {
       where.orgId = user.orgId;
     }
 
-    // Apply filters
     if (filters?.status) where.status = filters.status;
     if (filters?.category) where.category = filters.category;
     if (filters?.severity) where.severity = filters.severity;
@@ -108,7 +193,9 @@ export class ComplaintService {
         evidence: true,
         communications: true,
         actions: true,
-        witnesses: true,   // <-- FIXED: was 'witness'
+        witnesses: true,
+        tenants: true,
+        monitoring: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -124,11 +211,13 @@ export class ComplaintService {
         evidence: true,
         communications: true,
         letters: true,
-        witnesses: true,     // <-- FIXED: was 'witness'
+        witnesses: true,
         actions: true,
         auditLogs: true,
         timelineEvents: true,
         monitoring: true,
+        tenants: true,
+        external: true,
       },
     });
 
@@ -146,15 +235,44 @@ export class ComplaintService {
 
   async update(id: string, data: any, userId: string) {
     const complaint = await this.prisma.complaint.findUnique({ where: { id } });
-    if (!complaint) throw new ForbiddenException('Complaint not found');
+    if (!complaint) throw new NotFoundException('Complaint not found');
 
-    // Recalculate risk if severity changed
+    // Recompute risk when factors change.
     let riskScore = complaint.riskScore;
     let riskLevel = complaint.riskLevel;
-    if (data.severity) {
-      const severityMap: Record<string, number> = { Low: 1, Medium: 3, High: 6, Critical: 9 };
-      riskScore = severityMap[data.severity] || 1;
-      riskLevel = this.getRiskLevel(riskScore);
+    const riskChanged =
+      data.riskFactors !== undefined && data.riskFactors !== complaint.riskFactors;
+    if (riskChanged) {
+      riskScore = computeRiskScore(data.riskFactors);
+      riskLevel = riskLevelFromScore(riskScore);
+    }
+
+    // Auto-stamp closure time when transitioning to closed.
+    let closedAt = data.closedAt !== undefined ? (data.closedAt ? new Date(data.closedAt) : null) : undefined;
+    if (data.status === 'Closed' && complaint.status !== 'Closed' && closedAt === undefined) {
+      closedAt = new Date();
+    }
+    if (data.status !== undefined && data.status !== 'Closed' && closedAt === undefined) {
+      closedAt = null;
+    }
+
+    // Re-resolve landlord if it changed and no address supplied.
+    let landlordName = data.landlordName !== undefined ? data.landlordName : undefined;
+    let landlordAddress = data.landlordAddress !== undefined ? data.landlordAddress : undefined;
+    if (data.landlordName !== undefined && data.landlordName !== complaint.landlordName) {
+      const resolved = await this.resolveLandlord(data.landlordName);
+      landlordName = resolved.landlordName;
+      landlordAddress = resolved.landlordAddress;
+      if (resolved.unmapped) {
+        await this.prisma.complaintAudit.create({
+          data: {
+            complaintId: id,
+            action: 'landlord_unmapped',
+            details: `Landlord "${data.landlordName}" doesn't match any known company.`,
+            userId,
+          },
+        });
+      }
     }
 
     const updated = await this.prisma.complaint.update({
@@ -163,17 +281,77 @@ export class ComplaintService {
         ...data,
         riskScore,
         riskLevel,
+        ...(closedAt !== undefined ? { closedAt } : {}),
+        ...(landlordName !== undefined ? { landlordName } : {}),
+        ...(landlordAddress !== undefined ? { landlordAddress } : {}),
+        noticeServedDate: data.noticeServedDate !== undefined ? (data.noticeServedDate ? new Date(data.noticeServedDate) : null) : undefined,
+        noticeExpiresDate: data.noticeExpiresDate !== undefined ? (data.noticeExpiresDate ? new Date(data.noticeExpiresDate) : null) : undefined,
+        incidentDate: data.incidentDate ? new Date(data.incidentDate) : undefined,
       },
     });
 
-    // Audit log
-    await this.prisma.complaintAudit.create({
-      data: {
-        complaintId: id,
-        action: 'Updated',
-        details: `Complaint ${complaint.reference} updated by ${userId}`,
-        userId,
-      },
+    // Audit each meaningful change separately so the case timeline reads cleanly.
+    if (data.status !== undefined && data.status !== complaint.status) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: id,
+          action: 'status_changed',
+          details: `Status changed from ${complaint.status} to ${data.status}`,
+          userId,
+        },
+      });
+    }
+    if (data.severity !== undefined && data.severity !== complaint.severity) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: id,
+          action: 'severity_changed',
+          details: `Severity changed from ${complaint.severity} to ${data.severity}`,
+          userId,
+        },
+      });
+    }
+    if (riskChanged) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: id,
+          action: 'risk_assessed',
+          details: `Risk assessment saved — score ${riskScore} (${riskLevel})`,
+          userId,
+        },
+      });
+    }
+    const noticeChanged =
+      (data.noticeGround !== undefined && data.noticeGround !== complaint.noticeGround) ||
+      (data.noticeServedDate !== undefined && (complaint.noticeServedDate
+        ? data.noticeServedDate !== complaint.noticeServedDate.toISOString().slice(0, 10)
+        : !!data.noticeServedDate));
+    if (noticeChanged) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: id,
+          action: 'notice_updated',
+          details: 'Section 8 notice details updated',
+          userId,
+        },
+      });
+    }
+    if (data.assignedToId !== undefined && data.assignedToId !== complaint.assignedToId) {
+      await this.prisma.complaintAudit.create({
+        data: {
+          complaintId: id,
+          action: 'pm_reassigned',
+          details: `PM reassigned by ${userId}`,
+          userId,
+        },
+      });
+    }
+
+    await this.timeline.create({
+      complaintId: id,
+      personId: userId,
+      action: 'Case Updated',
+      details: `Complaint ${complaint.reference} updated`,
     });
 
     return updated;
@@ -181,25 +359,102 @@ export class ComplaintService {
 
   async updateStatus(id: string, status: string, userId: string) {
     const complaint = await this.prisma.complaint.findUnique({ where: { id } });
-    if (!complaint) throw new ForbiddenException('Complaint not found');
+    if (!complaint) throw new NotFoundException('Complaint not found');
 
-    const closedAt = status === 'Closed' ? new Date() : undefined;
+    const closedAt = status === 'Closed' ? new Date() : null;
 
     const updated = await this.prisma.complaint.update({
       where: { id },
       data: { status, closedAt },
     });
 
-    // Audit log
     await this.prisma.complaintAudit.create({
       data: {
         complaintId: id,
-        action: 'Status Changed',
+        action: 'status_changed',
         details: `Status changed to ${status} by ${userId}`,
         userId,
       },
     });
 
+    await this.timeline.create({
+      complaintId: id,
+      personId: userId,
+      action: 'Status Changed',
+      details: `Status changed to ${status}`,
+    });
+
     return updated;
+  }
+
+  // GET /complaints/:id/sla — visit SLA status for the case.
+  async getSla(id: string, user: any) {
+    const complaint = await this.prisma.complaint.findUnique({ where: { id } });
+    if (!complaint) throw new NotFoundException('Complaint not found');
+    const roles = user?.roles || [];
+    const isStaff = roles.some((r: string) => ['Admin', 'PropertyManager'].includes(r));
+    if (!isStaff && complaint.tenantEmail !== user.email) throw new ForbiddenException('Access denied');
+
+    const sla = visitSlaInfo(complaint.severity, complaint.createdAt);
+    const incidentCount = await this.prisma.complaintIncident.count({ where: { complaintId: id } });
+    const evidenceCount = await this.prisma.complaintEvidence.count({ where: { complaintId: id } });
+    return {
+      ...sla,
+      severity: complaint.severity,
+      incidentCount,
+      evidenceCount,
+      addressed: incidentCount > 0 || evidenceCount > 0,
+    };
+  }
+
+  // GET /complaints/:id/export — full case pack + court readiness checklist.
+  async exportCase(id: string, user: any) {
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { id },
+      include: {
+        property: true,
+        assignedTo: true,
+        incidents: true,
+        evidence: true,
+        communications: true,
+        letters: true,
+        witnesses: true,
+        actions: true,
+        auditLogs: true,
+        timelineEvents: true,
+        monitoring: true,
+        tenants: true,
+        external: true,
+      },
+    });
+    if (!complaint) throw new NotFoundException('Complaint not found');
+    const roles = user?.roles || [];
+    const isStaff = roles.some((r: string) => ['Admin', 'PropertyManager'].includes(r));
+    if (!isStaff && complaint.tenantEmail !== user.email) throw new ForbiddenException('Access denied');
+
+    const { checklist, courtReady } = buildCourtChecklist({
+      complaint,
+      incidents: complaint.incidents,
+      letters: complaint.letters,
+      evidence: complaint.evidence,
+      external: complaint.external,
+      witnesses: complaint.witnesses,
+    });
+
+    return {
+      complaint,
+      incidents: complaint.incidents,
+      evidence: complaint.evidence,
+      letters: complaint.letters,
+      external: complaint.external,
+      witnesses: complaint.witnesses,
+      audit: complaint.auditLogs,
+      communications: complaint.communications,
+      actions: complaint.actions,
+      tenants: complaint.tenants,
+      monitoring: complaint.monitoring,
+      checklist,
+      courtReady,
+    };
   }
 }

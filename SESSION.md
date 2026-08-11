@@ -42,3 +42,18 @@
 - `uploads/` dirs are inside the backend container (ephemeral) — files lost on container recreate. Consider a volume mount for persistence.
 - Render deploy: update `render.yaml` env if needed; migrations via `prisma db push` (already the Dockerfile CMD).
 - Optional: switch `prisma migrate` (real migration history) before v1.
+
+## Session 3 — 2026-08-11 (ASB Full Parity)
+### Scope
+- Replicate the Omnia ASB app's **functionality only** (reference `ASB_APP-main.zip`); UI is intentionally not copied — a better UI will be built separately.
+- Deployed POP stack already live on Render (frontend `pop-frontend-be1h`, backend `pop-backend-urfk`, nginx proxy fixed with `proxy_set_header Host $proxy_host`), demo data seeded (5 complaints, 2 properties, monitoring active).
+
+### Deliverables
+- Schema: `riskFactors`, `noticeGround/ServedDate/ExpiresDate`, `rentArrearsAmount`, `closedReason`, `outcome`, `branch`, `assignedPmEmail`, `landlordName/Address`, `propertyLevel` on `Complaint`; new `ComplaintTenant`, `ComplaintExternal`, `HousingCompany`; `ComplaintLetter.isGeneric`/`tenantName`.
+- ASB letter templates (first_warning / final_warning / notice_seeking_possession) with Ground 12/14 notice periods, generic vs named modes, NSP guards (named-only + ground required), mark-sent with method + Certificate of Posting, email blocked w/o tenant email.
+- Risk scoring (weighted factors → score → level), court pack checklist + `GET /complaints/:id/export`, external refs module.
+- Monitoring hardening (warning-letter-sent precondition, +30d expiry, reject endReason, Expired/Broken states, break-on-new-incident).
+- SLA cron (visit windows crit0/high3/med5/low7 working days → PM/BM reminder → Ops escalation; monitoring auto-expiry; audited steps) via `@nestjs/schedule`.
+- Complaint create/update: multi-tenant, property-level, risk factors, notice fields, branch, landlord resolution, closedReason/outcome, per-field audit, critical-case alert.
+- Frontend functional integration (risk factors, court pack + export, external refs, ASB letters + mark sent, notice fields, SLA status) — not a UI redesign.
+- Local build + verify, seed, deploy to Render, online smoke test.
