@@ -21,3 +21,6 @@ services:
     region: singapore
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
+    envVars:
+      - key: BACKEND_URL
+        value: https://pop-backend-urfk.onrender.com
