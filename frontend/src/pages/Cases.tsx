@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useRoles } from '../context/AuthContext';
 
 const RISK_FACTORS = [
   { key: 'vulnerable_tenant', label: 'Vulnerable tenant' },
@@ -11,6 +12,7 @@ const RISK_FACTORS = [
 ];
 
 export default function Cases() {
+  const { user, isStaff } = useRoles();
   const [cases, setCases] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -109,13 +111,15 @@ export default function Cases() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-red-700">ASB Cases</h1>
+        <h1 className="text-3xl font-bold text-red-700">{isStaff ? 'ASB Cases' : "My ASB Cases"}</h1>
+        {isStaff && (
         <button
           onClick={() => setShowModal(true)}
           className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
         >
           + Report ASB
         </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -126,13 +130,14 @@ export default function Cases() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Property</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Urgency</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {cases.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                  No complaints found. Report one!
+                <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                  {isStaff ? 'No complaints found. Report one!' : 'You have no ASB cases yet.'}
                 </td>
               </tr>
             ) : (
@@ -156,6 +161,14 @@ export default function Cases() {
                     <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
                       {c.status || 'Open'}
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <a
+                      href={`/complaints/${c.id}`}
+                      className="text-blue-600 hover:underline text-sm font-medium"
+                    >
+                      View case
+                    </a>
                   </td>
                 </tr>
               ))
