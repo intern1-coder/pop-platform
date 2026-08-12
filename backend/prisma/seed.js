@@ -7,6 +7,12 @@ const DUMMY_USERS = [
   { email: 'admin@pop.test', password: 'Admin123!', firstName: 'Pop', lastName: 'Admin', role: 'Admin' },
   { email: 'manager@pop.test', password: 'Manager123!', firstName: 'Pop', lastName: 'Manager', role: 'PropertyManager' },
   { email: 'tenant@pop.test', password: 'Tenant123!', firstName: 'Pop', lastName: 'Tenant', role: 'Tenant' },
+  // A 2nd tenant so complaint ownership can be split across tenants and the
+  // role-scoping on /api/complaints is visibly different per role:
+  //   Admin      -> sees all 5 complaints (org scope)
+  //   tenant@pop  -> sees 3 (the ones below still owned by tenant@pop.test)
+  //   sarah@pop   -> sees 2 (CMP-2025-0003, CMP-2025-0004)
+  { email: 'sarah@pop.test', password: 'Sarah123!', firstName: 'Sarah', lastName: 'Tenant', role: 'Tenant' },
 ];
 
 const DEMO_PROPERTIES = [
@@ -57,9 +63,9 @@ const DEMO_COMPLAINTS = [
     branch: 'Manchester North',
     landlordName: 'omnia',
     tenants: [
-      { tenantName: 'Pop Tenant', tenantEmail: 'tenant@pop.test', tenancyRef: 'RC-F2-2023', isPrimary: true },
-      { tenantName: 'J. Tenant', tenantEmail: 'jtenant@example.com', tenancyRef: 'RC-F2-2023', isPrimary: false },
-    ],
+                { tenantName: 'Pop Tenant', tenantEmail: 'tenant@pop.test', tenancyRef: 'RC-F2-2023', isPrimary: true },
+                { tenantName: 'J. Tenant', tenantEmail: 'jtenant@example.com', tenancyRef: 'RC-F2-2023', isPrimary: false },
+              ],
     incident: {
       category: 'Damp & Mould',
       severity: 'High',
@@ -144,8 +150,8 @@ const DEMO_COMPLAINTS = [
   },
   {
     reference: 'CMP-2025-0003',
-    tenantName: 'Pop Tenant',
-    tenantEmail: 'tenant@pop.test',
+    tenantName: 'Sarah Smith',
+    tenantEmail: 'sarah@pop.test',
     tenantPhone: '01234567890',
     category: 'Heating & Hot Water',
     severity: 'Critical',
@@ -216,8 +222,8 @@ const DEMO_COMPLAINTS = [
   },
   {
     reference: 'CMP-2025-0004',
-    tenantName: 'Pop Tenant',
-    tenantEmail: 'tenant@pop.test',
+    tenantName: 'Sarah Smith',
+    tenantEmail: 'sarah@pop.test',
     tenantPhone: '01234567890',
     category: 'Anti-Social Behaviour',
     severity: 'Low',
@@ -553,7 +559,8 @@ async function main() {
   console.log('\n=== DUMMY LOGINS ===');
   console.log('Admin:          admin@pop.test   / Admin123!');
   console.log('PropertyManager: manager@pop.test / Manager123!');
-  console.log('Tenant:         tenant@pop.test   / Tenant123!');
+  console.log('Tenant (A):     tenant@pop.test   / Tenant123!  (owns CMP-0001,0002,0005)');
+  console.log('Tenant (B):     sarah@pop.test    / Sarah123!   (owns CMP-0003,0004)');
   console.log('===================');
 }
 
