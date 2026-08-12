@@ -57,3 +57,56 @@
 - Complaint create/update: multi-tenant, property-level, risk factors, notice fields, branch, landlord resolution, closedReason/outcome, per-field audit, critical-case alert.
 - Frontend functional integration (risk factors, court pack + export, external refs, ASB letters + mark sent, notice fields, SLA status) — not a UI redesign.
 - Local build + verify, seed, deploy to Render, online smoke test.
+
+## Session 4 — 2026-08-12 (Role scoping + ASB parity shipped)
+### Decision
+- ASB full parity is **functionality-only** (no UI theme copy): keep the existing Tailwind white theme; a later UI refresh is a separate task.
+- Backend auth/RBAC already role-scoped the API; the **"all roles see the same"** issue was a **frontend display** problem (shared list).
+
+### What I built
+- `frontend/src/context/AuthContext.tsx` — added exports: `UserRole` type, `ROLES`, `isStaff(user)`, `isTenant(user)`, and a `useRoles()` hook returning `{user, roles, isStaff, isTenant, isAdmin, isPropertyManager, hasRole}`.
+- `frontend/src/pages/Cases.tsx` — imports `useRoles()` from `AuthContext` (fixes the old `import { AuthContext }` unused-context lint). Gates the "+ Report ASB" button behind `isStaff`; renders the header title as "ASB Cases" (staff) vs "My ASB Cases" (tenant); adds a "View case" link column. Tenant's `GET /api/complaints` is already server-scoped to `tenantEmail === user.email` (ComplaintService.findAll), so the list itself is tenant-scoped; the frontend now reflects that visibly.
+
+### What I shipped to Render (live)
+- commit `4288d09` (role-scoping fix + `ARCHITECTURE.md`) pushed to `main` → frontend autodeployed.
+- commit `348ff31` (seed change) pushed to `main` → backend rebuilding + re-seeding.
+- Added a 4th demo user to `backend/prisma/seed.js`:
+  - `sarah@pop.test` / `Sarah123!` (role `Tenant`), so complaint ownership is split: Admin → 5 cases, `tenant@pop.test` → 3 (CMP-2025-0001/0002/0005), `sarah@pop.test` → 2 (CMP-2025-0003/0004). This makes the role-scoping **visibly different** online instead of all-complaints-owned-by-one-tenant.
+- Build verified locally: `npx vite build` (frontend ✓) and `npx tsc --noEmit` (backend ✓).
+
+### Verification done so far
+- Frontend live, returns 200.
+- `POST /api/auth/login` returns **201** for `admin@pop.test` (role `Admin`) and `manager@pop.test` (role `PropertyManager`).
+- Backend is **sleeping/rebuilding** between requests (Render free tier) → first request after idle takes ~60 s. The role-visibility diff will become provably visible once the backend image with the new seed finishes deploying; I'm polling until `sarah@pop.test` logs in, then I re-run the Admin/Tenant-A/Tenant-B `/api/complaints` comparison in one warm pass and capture the counts.
+
+### Live (public) URLs
+- Frontend: https://pop-frontend-be1h.onrender.com
+- Backend API: https://pop-backend-urfk.onrender.com
+
+### Updated dummy logins (4 now)
+| Role | Email | Password |
+|---|---|---|
+| Admin | admin@pop.test | Admin123! |
+| Property Manager | manager@pop.test | Manager123! |
+| Tenant (A) | tenant@pop.test | Tenant123! |
+| Tenant (B) | sarah@pop.test | Sarah123! |
+
+### Next
+- Regenerate docs: `PLAN.md` (sync ASB-parity section, mark Phase 8 done), `README.md` (4 logins).
+
+## Verification result
+Cross-role complaint visibility + RBAC verified **locally against docker** (deterministic; Render free-tier backend sleeps/rebuilds between requests so the online check kept timing out, but the deployed code is identical):
+- Admin → 5 complaints (org scope)
+- Tenant A (tenant@pop.test) → 3 (CMP-2025-0001, 0002, 0005)
+- Tenant B (sarah@pop.test) → 2 (CMP-2025-0003, 0004)
+- RBAC: Tenant POST `/api/complaints/:id/monitoring/request` → **403 Forbidden** (staff-only correctly blocked)
+
+### Commits pushed to `main` (Render auto-deploys from this branch)
+- `4288d09` — `feat(frontend): role-scope Cases list + add useRoles helper`
+- `348ff31` — `seed: add Tenant (B) sarah@pop.test / Sarah123! and split demo ownership`
+- `8fe0aed` — `fix(seed): delete ComplaintTenant/External before recreating (FK constraint)`
+
+### Open items
+- Render backend free tier sleeps ~60s after idle; cold-start adds latency to first request. No action needed (just wait after deploy).
+- `uploads/` dirs are inside the backend container (ephemeral). Fine for MVP demos on Render; consider a volume mount only if persistence across deploys matters.
+

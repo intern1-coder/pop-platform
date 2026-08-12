@@ -7,8 +7,8 @@ Property Operations Platform (POP) for managing ASB (Anti-Social Behaviour) case
 ## 1. Current State (as inspected)
 
 ### Backend (NestJS + Prisma)
-- **DB driver mismatch:** `schema.prisma` declares `provider = "postgresql"`, but local dev uses SQLite (`DATABASE_URL=file:./dev.db`, `migration_lock.toml = sqlite`). Docker uses PostgreSQL. **Do not run `prisma generate` locally** or the SQLite workflow breaks.
-- JWT auth with roles: `Admin`, `PropertyManager`, `Tenant` (dummy users seeded).
+- **DB unified on PostgreSQL** (schema provider = `postgresql`). Local dev uses docker Postgres on host port `localhost:5432` (native Windows Postgres may own 5432; docker-compose maps the container's Postgres to `5432` internally). Render uses the managed Postgres instance. Applied via `prisma db push` (no migration-history sync needed for MVP). **Never point `DATABASE_URL` at a local SQLite file** — the provider is postgresql.
+- JWT auth with roles: `Admin`, `PropertyManager`, `Tenant`. **New:** `sarah@pop.test` (Tenant) seeded too so complaint ownership splits visibly across roles.
 - Existing modules: `auth`, `property`, `case`, `people`, `timeline`, `complaint`, `incident`.
 
 ### Frontend (React + Vite + Tailwind)
@@ -186,7 +186,7 @@ model ComplaintMonitoring {
 
 ---
 
-## 5b. Phase 8 — ASB Full Parity (reference: Omnia ASB App)
+## 5b. Phase 8 — ASB Full Parity (reference: Omnia ASB App) — [x] DONE
 
 > Reference implementation: `ASB_APP-main.zip` (Cloudflare Worker + D1 + PWA). We replicate **functionality & the problems it solves only** — NOT the UI (a better UI will be built separately).
 
