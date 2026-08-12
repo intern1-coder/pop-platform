@@ -389,6 +389,8 @@ async function seedDemoData(org) {
       await prisma.complaintMonitoring.deleteMany({ where: { complaintId: existing.id } });
       await prisma.complaintAudit.deleteMany({ where: { complaintId: existing.id } });
       await prisma.timelineEvent.deleteMany({ where: { complaintId: existing.id } });
+      await prisma.complaintTenant.deleteMany({ where: { complaintId: existing.id } });
+      await prisma.complaintExternal.deleteMany({ where: { complaintId: existing.id } });
       await prisma.complaint.delete({ where: { id: existing.id } });
       console.log('Recreating demo complaint:', demo.reference);
     }
