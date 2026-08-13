@@ -51,6 +51,29 @@ export default function ComplaintDetail() {
     fetchComplaint();
   };
 
+  // Merge mutation results into local state instead of re-fetching the whole
+  // complaint. Each child endpoint returns the row it created/updated, so
+  // sub-collection changes (evidence, comms, letters, witnesses, actions,
+  // external) can be applied locally. Full refetch is only kept for mutations
+  // with top-level side effects (status, escalate, incidents, monitoring,
+  // ASB details) so risk / monitoring badges stay accurate.
+  const addRow = (key: string, row: any) =>
+    setComplaint((prev: any) => (prev ? { ...prev, [key]: [...(prev[key] || []), row] } : prev));
+  const replaceRow = (key: string, row: any) =>
+    setComplaint((prev: any) => (prev ? { ...prev, [key]: (prev[key] || []).map((x: any) => (x.id === row.id ? row : x)) } : prev));
+  const removeRow = (key: string, id: string) =>
+    setComplaint((prev: any) => (prev ? { ...prev, [key]: (prev[key] || []).filter((x: any) => x.id !== id) } : prev));
+
+  const addEvidence = (row: any) => addRow('evidence', row);
+  const delEvidence = (id: string) => removeRow('evidence', id);
+  const addComm = (row: any) => addRow('communications', row);
+  const addLetter = (row: any) => addRow('letters', row);
+  const updLetter = (row: any) => replaceRow('letters', row);
+  const addExternal = (row: any) => addRow('external', row);
+  const addWitness = (row: any) => addRow('witnesses', row);
+  const addActionItem = (row: any) => addRow('actions', row);
+  const updActionItem = (row: any) => replaceRow('actions', row);
+
   const downloadFile = async (url: string, filename: string) => {
     const res = await axios.get(url, { responseType: 'blob' });
     const blobUrl = URL.createObjectURL(res.data);
@@ -121,20 +144,20 @@ export default function ComplaintDetail() {
 
       {isStaff ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <EvidenceSection complaint={complaint} onDone={refresh} isStaff={isStaff} />
-          <CommunicationSection complaint={complaint} onDone={refresh} />
-          <LetterSection complaint={complaint} onDone={refresh} />
-          <ExternalSection complaint={complaint} onDone={refresh} />
-          <WitnessSection complaint={complaint} onDone={refresh} />
-          <ActionSection complaint={complaint} onDone={refresh} />
+          <EvidenceSection complaint={complaint} onAdd={addEvidence} onRemove={delEvidence} isStaff={isStaff} />
+          <CommunicationSection complaint={complaint} onAdd={addComm} />
+          <LetterSection complaint={complaint} onAdd={addLetter} onReplace={updLetter} />
+          <ExternalSection complaint={complaint} onAdd={addExternal} />
+          <WitnessSection complaint={complaint} onAdd={addWitness} />
+          <ActionSection complaint={complaint} onAdd={addActionItem} onReplace={updActionItem} />
           <MonitoringSection complaint={complaint} onDone={refresh} />
           <CourtPackSection complaint={complaint} onDone={refresh} />
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <EvidenceSection complaint={complaint} onDone={refresh} isStaff={isStaff} />
-          <CommunicationSection complaint={complaint} onDone={refresh} />
-          <WitnessSection complaint={complaint} onDone={refresh} />
+          <EvidenceSection complaint={complaint} onAdd={addEvidence} onRemove={delEvidence} isStaff={isStaff} />
+          <CommunicationSection complaint={complaint} onAdd={addComm} />
+          <WitnessSection complaint={complaint} onAdd={addWitness} />
         </div>
       )}
 
@@ -436,7 +459,7 @@ function CourtPackSection({ complaint, onDone }: any) {
   );
 }
 
-function EvidenceSection({ complaint, onDone, isStaff = true }: any) {
+function EvidenceSection({ complaint, onAdd, onRemove, isStaff = true }: any) {
   const [file, setFile] = useState<any>(null);
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
@@ -447,11 +470,16 @@ function EvidenceSection({ complaint, onDone, isStaff = true }: any) {
     fd.append('file', file);
     fd.append('description', desc);
     setBusy(true);
-    await axios.post(`/api/complaints/${complaint.id}/evidence`, fd);
-    setBusy(false);
-    setFile(null);
-    setDesc('');
-    onDone();
+    try {
+      const res = await axios.post(`/api/complaints/${complaint.id}/evidence`, fd);
+      onAdd(res.data);
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Upload failed');
+    } finally {
+      setBusy(false);
+      setFile(null);
+      setDesc('');
+    }
   };
 
   return (
@@ -478,7 +506,7 @@ function EvidenceSection({ complaint, onDone, isStaff = true }: any) {
                 <button
                   onClick={async () => {
                     await axios.delete(`/api/complaints/${complaint.id}/evidence/${e.id}`);
-                    onDone();
+                    onRemove(e.id);
                   }}
                   className="text-red-600 text-sm hover:underline"
                 >
@@ -503,13 +531,13 @@ async function downloadEvidence(complaintId: string, evidenceId: string, fileNam
   URL.revokeObjectURL(url);
 }
 
-function CommunicationSection({ complaint, onDone }: any) {
+function CommunicationSection({ complaint, onAdd }: any) {
   const [form, setForm] = useState({ type: 'Email', direction: 'Inbound', date: new Date().toISOString().split('T')[0], summary: '', details: '' });
   const add = async () => {
     if (!form.summary) return;
-    await axios.post(`/api/complaints/${complaint.id}/communications`, { ...form, date: new Date(form.date) });
+    const res = await axios.post(`/api/complaints/${complaint.id}/communications`, { ...form, date: new Date(form.date) });
     setForm({ ...form, summary: '', details: '' });
-    onDone();
+    onAdd(res.data);
   };
   return (
     <div className={sectionCard}>
@@ -547,7 +575,7 @@ function CommunicationSection({ complaint, onDone }: any) {
   );
 }
 
-function LetterSection({ complaint, onDone }: any) {
+function LetterSection({ complaint, onAdd, onReplace }: any) {
   const [type, setType] = useState('first_warning');
   const [mode, setMode] = useState<'generic' | 'named'>('named');
   const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
@@ -558,12 +586,12 @@ function LetterSection({ complaint, onDone }: any) {
   const generate = async () => {
     setGenBusy(true);
     try {
-      await axios.post(`/api/complaints/${complaint.id}/letters`, {
+      const res = await axios.post(`/api/complaints/${complaint.id}/letters`, {
         letterType: type,
         mode,
         tenantIds: mode === 'named' ? selectedTenants : undefined,
       });
-      onDone();
+      onAdd(res.data);
     } catch (e: any) {
       alert(e.response?.data?.message || 'Generation failed');
     } finally {
@@ -573,12 +601,12 @@ function LetterSection({ complaint, onDone }: any) {
 
   const markSent = async (letterId: string, method: string) => {
     try {
-      await axios.put(`/api/complaints/${complaint.id}/letters/${letterId}/sent`, {
+      const res = await axios.put(`/api/complaints/${complaint.id}/letters/${letterId}/sent`, {
         sentMethod: method,
         certificateOfPostingDate: method === 'post' && pc2 ? pc2 : undefined,
       });
       setPc2('');
-      onDone();
+      onReplace(res.data);
     } catch (e: any) {
       alert(e.response?.data?.message || 'Mark sent failed');
     }
@@ -694,7 +722,7 @@ function downloadLetter(complaintId: string, letterId: string) {
     });
 }
 
-function ExternalSection({ complaint, onDone }: any) {
+function ExternalSection({ complaint, onAdd }: any) {
   const [form, setForm] = useState({
     bodyType: 'Police',
     cadNumber: '',
@@ -706,9 +734,9 @@ function ExternalSection({ complaint, onDone }: any) {
   });
   const add = async () => {
     if (!form.bodyType) return;
-    await axios.post(`/api/complaints/${complaint.id}/external`, { ...form, dateReported: new Date(form.dateReported) });
+    const res = await axios.post(`/api/complaints/${complaint.id}/external`, { ...form, dateReported: new Date(form.dateReported) });
     setForm({ bodyType: 'Police', cadNumber: '', referenceNumber: '', officerName: '', forceName: '', dateReported: new Date().toISOString().split('T')[0], notes: '' });
-    onDone();
+    onAdd(res.data);
   };
   return (
     <div className={sectionCard}>
@@ -745,14 +773,14 @@ function ExternalSection({ complaint, onDone }: any) {
   );
 }
 
-function WitnessSection({ complaint, onDone }: any) {
+function WitnessSection({ complaint, onAdd }: any) {
   const [form, setForm] = useState({ name: '', contactDetails: '', statement: '', anonymous: false, digitalAcknowledgement: false });
   const [expanded, setExpanded] = useState<string | null>(null);
   const add = async () => {
     if (!form.name) return;
-    await axios.post(`/api/complaints/${complaint.id}/witnesses`, form);
+    const res = await axios.post(`/api/complaints/${complaint.id}/witnesses`, form);
     setForm({ name: '', contactDetails: '', statement: '', anonymous: false, digitalAcknowledgement: false });
-    onDone();
+    onAdd(res.data);
   };
   return (
     <div className={sectionCard}>
@@ -789,18 +817,18 @@ function WitnessSection({ complaint, onDone }: any) {
   );
 }
 
-function ActionSection({ complaint, onDone }: any) {
+function ActionSection({ complaint, onAdd, onReplace }: any) {
   const [form, setForm] = useState({ description: '', dueDate: '' });
   const add = async () => {
     if (!form.description) return;
-    await axios.post(`/api/complaints/${complaint.id}/actions`, { ...form, dueDate: form.dueDate ? new Date(form.dueDate) : null });
+    const res = await axios.post(`/api/complaints/${complaint.id}/actions`, { ...form, dueDate: form.dueDate ? new Date(form.dueDate) : null });
     setForm({ description: '', dueDate: '' });
-    onDone();
+    onAdd(res.data);
   };
   const cycle = async (action: any) => {
     const next = action.status === 'Pending' ? 'InProgress' : 'Completed';
-    await axios.put(`/api/complaints/${complaint.id}/actions/${action.id}`, { status: next });
-    onDone();
+    const res = await axios.put(`/api/complaints/${complaint.id}/actions/${action.id}`, { status: next });
+    onReplace(res.data);
   };
   const statusBadge = (s: string) => (
     <span className={`px-2 py-0.5 rounded-full text-xs ${s === 'Completed' ? 'bg-green-100 text-green-800' : s === 'InProgress' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700'}`}>{s}</span>

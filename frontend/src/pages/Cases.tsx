@@ -17,6 +17,10 @@ export default function Cases() {
   const [properties, setProperties] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [riskOpen, setRiskOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const limit = 25;
   const [newCase, setNewCase] = useState({
     title: '',
     propertyId: '',
@@ -36,14 +40,17 @@ export default function Cases() {
     riskFactors: [] as string[],
   });
 
-  const fetchData = async () => {
+  const fetchData = async (p = page) => {
     try {
-      // ✅ CHANGED: /api/cases → /api/complaints
+      // ✅ CHANGED: /api/cases → /api/complaints (paginated envelope)
       const [cRes, pRes] = await Promise.all([
-        axios.get('/api/complaints'),
+        axios.get('/api/complaints', { params: { page: p, limit } }),
         axios.get('/api/properties')
       ]);
-      setCases(cRes.data);
+      setCases(cRes.data.data);
+      setTotal(cRes.data.total);
+      setTotalPages(Math.max(Math.ceil(cRes.data.total / limit), 1));
+      setPage(cRes.data.page);
       setProperties(pRes.data);
     } catch (e) {
       console.error('Error fetching data:', e);
@@ -51,7 +58,7 @@ export default function Cases() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(1);
   }, []);
 
   const handleSave = async () => {
@@ -101,7 +108,7 @@ export default function Cases() {
         landlordName: '',
         riskFactors: [],
       });
-      fetchData();
+      fetchData(1);
     } catch (e) {
       console.error('Error creating complaint:', e);
       alert('Error creating case');
@@ -176,6 +183,31 @@ export default function Cases() {
           </tbody>
         </table>
       </div>
+
+      {total > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+          <span>
+            Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => fetchData(page - 1)}
+              disabled={page <= 1}
+              className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="px-3 py-1">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => fetchData(page + 1)}
+              disabled={page >= totalPages}
+              className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal - Create Complaint */}
       {showModal && (

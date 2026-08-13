@@ -7,8 +7,8 @@ export default function Complaints() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('/api/complaints')
-      .then(res => setComplaints(res.data))
+    axios.get('/api/complaints', { params: { page: 1, limit: 25 } })
+      .then(res => setComplaints(res.data.data))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);

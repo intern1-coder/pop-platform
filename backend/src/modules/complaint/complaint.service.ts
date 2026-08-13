@@ -184,21 +184,44 @@ export class ComplaintService {
     if (filters?.category) where.category = filters.category;
     if (filters?.severity) where.severity = filters.severity;
 
-    return this.prisma.complaint.findMany({
-      where,
-      include: {
-        property: true,
-        assignedTo: true,
-        incidents: true,
-        evidence: true,
-        communications: true,
-        actions: true,
-        witnesses: true,
-        tenants: true,
-        monitoring: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    // Pagination params: ?page=1&limit=25 (cap at 100)
+    const page = Math.max(parseInt(filters?.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(filters?.limit, 10) || 25, 1), 100);
+    const skip = (page - 1) * limit;
+
+    // Lean select — only fields the list UI actually renders. Previously this
+    // endpoint returned the FULL complaint with every nested sub-table
+    // (incidents, evidence, communications, actions, witnesses, tenants,
+    // monitoring) for every row, which the list page never used.
+    const select = {
+      id: true,
+      reference: true,
+      tenantName: true,
+      category: true,
+      severity: true,
+      riskLevel: true,
+      riskScore: true,
+      status: true,
+      incidentDate: true,
+      createdAt: true,
+      updatedAt: true,
+      monitoringStatus: true,
+      property: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, firstName: true, lastName: true } },
+    } as const;
+
+    const [total, data] = await Promise.all([
+      this.prisma.complaint.count({ where }),
+      this.prisma.complaint.findMany({
+        where,
+        select,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   async findOne(id: string, user: any) {
