@@ -74,6 +74,12 @@ export default function ComplaintDetail() {
   const addActionItem = (row: any) => addRow('actions', row);
   const updActionItem = (row: any) => replaceRow('actions', row);
 
+  // Top-level mutations (status, escalate, ASB details) return the full
+  // complaint row (scalar fields only) — merge those in, keeping the relations
+  // already in state, instead of re-fetching the whole complaint.
+  const mergeTopLevel = (row: any) =>
+    setComplaint((prev: any) => (prev ? { ...prev, ...row } : prev));
+
   const downloadFile = async (url: string, filename: string) => {
     const res = await axios.get(url, { responseType: 'blob' });
     const blobUrl = URL.createObjectURL(res.data);
@@ -130,8 +136,8 @@ export default function ComplaintDetail() {
 
         {isStaff && (
           <div className="mt-4 flex gap-2 flex-wrap items-center">
-            <StatusSelect complaint={complaint} onDone={refresh} />
-            {complaint.status !== 'Escalated' && <EscalateButton complaintId={complaint.id} onDone={refresh} />}
+            <StatusSelect complaint={complaint} onData={mergeTopLevel} />
+            {complaint.status !== 'Escalated' && <EscalateButton complaintId={complaint.id} onData={mergeTopLevel} />}
           </div>
         )}
       </div>
@@ -140,7 +146,7 @@ export default function ComplaintDetail() {
       {isStaff && <SlaSection complaint={complaint} onDone={refresh} />}
 
       {/* ASB details editor (staff): risk factors + notice fields + branch */}
-      {isStaff && <AsbDetailsSection complaint={complaint} meta={meta} onDone={refresh} />}
+      {isStaff && <AsbDetailsSection complaint={complaint} meta={meta} onData={mergeTopLevel} />}
 
       {isStaff ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -227,11 +233,11 @@ function RiskChip({ score, level, factors }: any) {
   return <span className={`px-3 py-1 rounded-full text-sm ${color}`}>{label}</span>;
 }
 
-function StatusSelect({ complaint, onDone }: any) {
+function StatusSelect({ complaint, onData }: any) {
   const [status, setStatus] = useState(complaint.status);
   const save = async () => {
-    await axios.put(`/api/complaints/${complaint.id}/status`, { status });
-    onDone();
+    const res = await axios.put(`/api/complaints/${complaint.id}/status`, { status });
+    onData(res.data);
   };
   return (
     <div className="flex items-center gap-2">
@@ -245,14 +251,17 @@ function StatusSelect({ complaint, onDone }: any) {
   );
 }
 
-function EscalateButton({ complaintId, onDone }: any) {
+function EscalateButton({ complaintId, onData }: any) {
   const [busy, setBusy] = useState(false);
   const escalate = async () => {
     if (!confirm('Escalate this complaint to senior team/legal?')) return;
     setBusy(true);
-    await axios.post(`/api/complaints/${complaintId}/escalation`);
-    setBusy(false);
-    onDone();
+    try {
+      const res = await axios.post(`/api/complaints/${complaintId}/escalation`);
+      onData(res.data);
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <button onClick={escalate} disabled={busy} className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-red-700 disabled:opacity-50">
@@ -263,7 +272,7 @@ function EscalateButton({ complaintId, onDone }: any) {
 
 // Staff-only editor: risk factors, notice ground / served date, rent arrears, branch,
 // closed reason + outcome. Saving recomputes the weighted risk score server-side.
-function AsbDetailsSection({ complaint, meta, onDone }: any) {
+function AsbDetailsSection({ complaint, meta, onData }: any) {
   const [saving, setSaving] = useState(false);
   const [fields, setFields] = useState({
     riskFactors: complaint.riskFactors || '',
@@ -292,8 +301,8 @@ function AsbDetailsSection({ complaint, meta, onDone }: any) {
       if (payload.noticeExpiresDate === '') payload.noticeExpiresDate = null;
       if (payload.rentArrearsAmount === '') payload.rentArrearsAmount = null;
       else payload.rentArrearsAmount = parseFloat(payload.rentArrearsAmount);
-      await axios.put(`/api/complaints/${complaint.id}`, payload);
-      onDone();
+      const res = await axios.put(`/api/complaints/${complaint.id}`, payload);
+      onData(res.data);
     } catch (e: any) {
       alert(e.response?.data?.message || 'Save failed');
     } finally {
